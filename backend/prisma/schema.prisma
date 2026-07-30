@@ -1,0 +1,383 @@
+// LandGuard Kenya — Prisma schema
+// Dev: SQLite (zero-install). Prod: change provider to "postgresql" + DATABASE_URL.
+// Enums are modelled as String fields validated in application code (src/constants)
+// so the identical schema runs on both SQLite and PostgreSQL without edits.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // ← change to "postgresql" for production
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity & access
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // BUYER | SELLER | ADMIN | GOVERNMENT_OFFICER | SURVEYOR
+  description String
+  permissions String // JSON array of permission strings
+  createdAt   DateTime @default(now())
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  phone           String    @unique
+  passwordHash    String
+  firstName       String
+  lastName        String
+  nationalId      String?   @unique
+  role            String    @default("BUYER") // see Role.name
+  status          String    @default("ACTIVE") // ACTIVE | SUSPENDED | PENDING
+  avatarUrl       String?
+  twoFactorEnabled Boolean  @default(false)
+  twoFactorSecret String?
+  isBlacklisted   Boolean   @default(false)
+  blacklistReason String?
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  refreshTokens       RefreshToken[]
+  parcelsAsSeller     LandParcel[]        @relation("SellerParcels")
+  parcelsAsOwner      LandParcel[]        @relation("OwnerParcels")
+  uploadedDocuments   Document[]          @relation("DocUploader")
+  verifiedDocuments   Document[]          @relation("DocVerifier")
+  verifications       VerificationRecord[]
+  transactionsAsBuyer Transaction[]       @relation("BuyerTx")
+  transactionsAsSeller Transaction[]      @relation("SellerTx")
+  approvedTransactions Transaction[]      @relation("GovApprover")
+  sentMessages        Message[]           @relation("MsgSender")
+  receivedMessages    Message[]           @relation("MsgReceiver")
+  notifications       Notification[]
+  complaintsRaised    Complaint[]         @relation("ComplaintRaiser")
+  complaintsAgainst   Complaint[]         @relation("ComplaintTarget")
+  auditLogs           AuditLog[]
+  siteVisitsRequested SiteVisit[]         @relation("VisitRequester")
+  siteVisitsAssigned  SiteVisit[]         @relation("VisitSurveyor")
+  fraudFlags          FraudFlag[]
+  certificates        Certificate[]
+  ownershipFrom       OwnershipHistory[]  @relation("PrevOwner")
+  ownershipTo         OwnershipHistory[]  @relation("NewOwner")
+
+  @@index([role])
+  @@index([status])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Land, documents & verification
+// ─────────────────────────────────────────────────────────────────────────────
+
+model LandParcel {
+  id             String   @id @default(cuid())
+  // NOT DB-unique by design: duplicate parcel/title-deed numbers are exactly what
+  // the fraud engine must DETECT and flag, so submissions are stored then screened.
+  parcelNumber   String   // e.g. "NAIROBI/BLOCK1/1234"
+  titleDeedNumber String
+  county         String
+  subCounty      String
+  locality       String
+  sizeAcres      Float
+  landUse        String // RESIDENTIAL | COMMERCIAL | AGRICULTURAL | INDUSTRIAL
+  price          Float
+  currency       String   @default("KES")
+  description    String
+  latitude       Float?
+  longitude      Float?
+  geoJson        String? // polygon boundary as GeoJSON string
+  status         String   @default("DRAFT") // see constants/status.ts ParcelStatus
+  riskScore      Int      @default(0) // 0-100 fraud risk
+  featuredImage  String?
+
+  sellerId       String
+  seller         User     @relation("SellerParcels", fields: [sellerId], references: [id])
+  currentOwnerId String?
+  currentOwner   User?    @relation("OwnerParcels", fields: [currentOwnerId], references: [id])
+
+  documents        Document[]
+  verifications    VerificationRecord[]
+  transactions     Transaction[]
+  messages         Message[]
+  complaints       Complaint[]
+  siteVisits       SiteVisit[]
+  fraudFlags       FraudFlag[]
+  ownershipHistory OwnershipHistory[]
+  qrCodes          QrCode[]
+  certificates     Certificate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([county])
+  @@index([sellerId])
+  @@index([parcelNumber])
+  @@index([titleDeedNumber])
+}
+
+model Document {
+  id           String    @id @default(cuid())
+  parcelId     String
+  parcel       LandParcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  type         String // TITLE_DEED | SURVEY_MAP | NATIONAL_ID | LAND_SEARCH | CONSENT | RATES_CLEARANCE
+  fileName     String
+  fileUrl      String
+  fileHash     String // sha256 — used for duplicate/tamper fraud detection
+  mimeType     String    @default("application/pdf")
+  status       String    @default("PENDING") // PENDING | VERIFIED | REJECTED | EXPIRED
+  expiryDate   DateTime?
+  rejectionReason String?
+
+  uploadedById String
+  uploadedBy   User      @relation("DocUploader", fields: [uploadedById], references: [id])
+  verifiedById String?
+  verifiedBy   User?     @relation("DocVerifier", fields: [verifiedById], references: [id])
+
+  fraudFlags   FraudFlag[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([parcelId])
+  @@index([fileHash])
+  @@index([status])
+}
+
+model VerificationRecord {
+  id         String     @id @default(cuid())
+  parcelId   String
+  parcel     LandParcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  stage      String // ADMIN_REVIEW | GOVERNMENT_VERIFICATION | SURVEY_APPROVAL
+  status     String     @default("PENDING") // PENDING | APPROVED | REJECTED
+  notes      String?
+  reviewerId String?
+  reviewer   User?      @relation(fields: [reviewerId], references: [id])
+  decidedAt  DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([parcelId])
+  @@index([stage])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Transactions, payments & ownership
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Transaction {
+  id            String     @id @default(cuid())
+  reference     String     @unique @default(cuid())
+  parcelId      String
+  parcel        LandParcel @relation(fields: [parcelId], references: [id])
+  buyerId       String
+  buyer         User       @relation("BuyerTx", fields: [buyerId], references: [id])
+  sellerId      String
+  seller        User       @relation("SellerTx", fields: [sellerId], references: [id])
+  offerAmount   Float
+  status        String     @default("OFFER_MADE") // see constants TransactionStatus
+  govApprovedById String?
+  govApprovedBy User?      @relation("GovApprover", fields: [govApprovedById], references: [id])
+  notes         String?
+
+  payments      Payment[]
+  certificate   Certificate?
+  ownershipHistory OwnershipHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+}
+
+model Payment {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  amount        Float
+  currency      String      @default("KES")
+  method        String // MPESA | VISA | MASTERCARD | BANK_TRANSFER
+  status        String      @default("PENDING") // PENDING | SUCCESS | FAILED | REFUNDED
+  reference     String      @unique @default(cuid())
+  providerRef   String?
+  phoneNumber   String?
+  failureReason String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([transactionId])
+  @@index([status])
+}
+
+model OwnershipHistory {
+  id            String      @id @default(cuid())
+  parcelId      String
+  parcel        LandParcel  @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  previousOwnerId String?
+  previousOwner User?       @relation("PrevOwner", fields: [previousOwnerId], references: [id])
+  newOwnerId    String
+  newOwner      User        @relation("NewOwner", fields: [newOwnerId], references: [id])
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+  transferType  String      @default("SALE") // SALE | INHERITANCE | GIFT | INITIAL_REGISTRATION
+  createdAt     DateTime    @default(now())
+
+  @@index([parcelId])
+}
+
+model Certificate {
+  id                String      @id @default(cuid())
+  certificateNumber String      @unique
+  parcelId          String
+  parcel            LandParcel  @relation(fields: [parcelId], references: [id])
+  ownerId           String
+  owner             User        @relation(fields: [ownerId], references: [id])
+  transactionId     String?     @unique
+  transaction       Transaction? @relation(fields: [transactionId], references: [id])
+  signature         String // HMAC digital signature of the certificate payload
+  pdfUrl            String?
+  qrCodeId          String?     @unique
+  qrCode            QrCode?     @relation(fields: [qrCodeId], references: [id])
+  issuedAt          DateTime    @default(now())
+
+  @@index([ownerId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Communication & workflow support
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Message {
+  id        String     @id @default(cuid())
+  senderId  String
+  sender    User       @relation("MsgSender", fields: [senderId], references: [id])
+  receiverId String
+  receiver  User       @relation("MsgReceiver", fields: [receiverId], references: [id])
+  parcelId  String?
+  parcel    LandParcel? @relation(fields: [parcelId], references: [id])
+  content   String
+  read      Boolean    @default(false)
+  createdAt DateTime   @default(now())
+
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String   @default("INFO") // INFO | SUCCESS | WARNING | FRAUD_ALERT | TRANSACTION
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
+
+model Complaint {
+  id             String      @id @default(cuid())
+  raisedById     String
+  raisedBy       User        @relation("ComplaintRaiser", fields: [raisedById], references: [id])
+  againstUserId  String?
+  againstUser    User?       @relation("ComplaintTarget", fields: [againstUserId], references: [id])
+  parcelId       String?
+  parcel         LandParcel? @relation(fields: [parcelId], references: [id])
+  subject        String
+  description    String
+  status         String      @default("OPEN") // OPEN | INVESTIGATING | RESOLVED | DISMISSED
+  resolutionNotes String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([status])
+}
+
+model SiteVisit {
+  id            String     @id @default(cuid())
+  parcelId      String
+  parcel        LandParcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User       @relation("VisitRequester", fields: [requestedById], references: [id])
+  surveyorId    String?
+  surveyor      User?      @relation("VisitSurveyor", fields: [surveyorId], references: [id])
+  scheduledAt   DateTime?
+  status        String     @default("REQUESTED") // REQUESTED | SCHEDULED | COMPLETED | CANCELLED
+  notes         String?
+  createdAt     DateTime   @default(now())
+
+  @@index([parcelId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fraud, QR & audit
+// ─────────────────────────────────────────────────────────────────────────────
+
+model FraudFlag {
+  id          String      @id @default(cuid())
+  parcelId    String?
+  parcel      LandParcel? @relation(fields: [parcelId], references: [id])
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id])
+  documentId  String?
+  document    Document?   @relation(fields: [documentId], references: [id])
+  type        String // DUPLICATE_PARCEL | DUPLICATE_TITLE | FAKE_DOCUMENT | BLACKLISTED_USER | DUPLICATE_OWNERSHIP | EXPIRED_DOCUMENT | SUSPICIOUS_ACTIVITY
+  severity    String // LOW | MEDIUM | HIGH | CRITICAL
+  score       Int // contribution to the risk score
+  description String
+  resolved    Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+
+  @@index([parcelId])
+  @@index([type])
+}
+
+model QrCode {
+  id          String      @id @default(cuid())
+  code        String      @unique // opaque verification token
+  type        String      @default("PARCEL") // PARCEL | CERTIFICATE | OWNERSHIP
+  payload     String // signed JSON payload
+  parcelId    String?
+  parcel      LandParcel? @relation(fields: [parcelId], references: [id])
+  scans       Int         @default(0)
+  certificate Certificate?
+  createdAt   DateTime    @default(now())
+
+  @@index([code])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String // LOGIN | CREATE_PARCEL | APPROVE_VERIFICATION | ...
+  entity    String // User | LandParcel | Transaction | ...
+  entityId  String?
+  ipAddress String?
+  userAgent String?
+  metadata  String? // JSON string with before/after or extra context
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
+}
