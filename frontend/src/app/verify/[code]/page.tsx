@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Shield, ShieldCheck, ShieldX, MapPin, Ruler, User, Hash, Loader2, Search } from 'lucide-react';
+import { ArrowLeft, Shield, ShieldCheck, ShieldX, MapPin, Ruler, User, Hash, Loader2, Search } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 
 interface VerifyResult {
@@ -50,7 +50,13 @@ export default function VerifyPage() {
       <header className="border-b border-ink-200 bg-white">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <Link href="/" className="flex items-center gap-2 font-semibold text-ink-900"><Shield className="h-5 w-5 text-brand-600" /> LandGuard</Link>
-          <span className="text-sm text-ink-500">Title verification</span>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-sm text-ink-500 sm:inline">Title verification</span>
+            <Link href="/verify" className="text-sm font-medium text-brand-700 hover:text-brand-800">Verify another</Link>
+            <Link href="/" className="btn-secondary px-3 py-1.5 text-xs" aria-label="Return to the home page">
+              <ArrowLeft className="h-3.5 w-3.5" /> Home
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -58,7 +64,7 @@ export default function VerifyPage() {
         {loading ? (
           <div className="flex items-center gap-2 text-ink-400"><Loader2 className="h-5 w-5 animate-spin" /> Verifying…</div>
         ) : (
-          <div className="w-full">
+          <div className="animate-in w-full">
             <div className={`card overflow-hidden`}>
               <div className={`flex items-center gap-3 p-6 ${result?.valid ? 'bg-brand-600' : 'bg-red-600'} text-white`}>
                 {result?.valid ? <ShieldCheck className="h-10 w-10" /> : <ShieldX className="h-10 w-10" />}

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Shield, Loader2 } from 'lucide-react';
+import { ArrowLeft, Shield, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { apiError } from '@/lib/api';
 
@@ -59,21 +59,27 @@ export default function LoginPage() {
 
       {/* Form */}
       <div className="flex w-full items-center justify-center p-6 lg:w-1/2">
-        <div className="w-full max-w-sm">
-          <div className="mb-6 lg:hidden">
+        <div className="w-full max-w-sm animate-in">
+          <div className="mb-6 flex items-center justify-between lg:hidden">
             <Link href="/" className="flex items-center gap-2 font-semibold text-ink-900">
               <Shield className="h-6 w-6 text-brand-600" /> LandGuard Kenya
             </Link>
+            <Link href="/" className="btn-secondary px-3 py-1.5 text-xs" aria-label="Return to the home page">
+              <ArrowLeft className="h-3.5 w-3.5" /> Home
+            </Link>
           </div>
+          <Link href="/" className="mb-5 hidden w-fit items-center gap-1.5 text-sm font-medium text-ink-500 transition-colors hover:text-brand-700 lg:inline-flex">
+            <ArrowLeft className="h-4 w-4" /> Back to home
+          </Link>
           <h1 className="text-2xl font-bold text-ink-900">Welcome back</h1>
           <p className="mt-1 text-sm text-ink-500">Sign in to your account.</p>
 
           {error && <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
-          <form onSubmit={submit} className="mt-6 space-y-4">
+          <form onSubmit={submit} autoComplete="off" className="mt-6 space-y-4">
             <div>
               <label className="label">Email</label>
-              <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@example.com" />
+              <input className="input" name="login-email" type="email" autoComplete="off" data-lpignore="true" data-1p-ignore="true" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@example.com" />
             </div>
             <div>
               <label className="label">Password</label>

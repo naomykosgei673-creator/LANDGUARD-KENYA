@@ -83,7 +83,15 @@ export async function apiPatch<T>(url: string, body?: any): Promise<T> {
 
 export function apiError(err: unknown): string {
   const e = err as AxiosError<any>;
-  return e.response?.data?.error?.message ?? e.message ?? 'Something went wrong';
+  const error = e.response?.data?.error;
+  const details = error?.details as Array<{ message?: string }> | undefined;
+
+  // Show the field-specific Zod feedback instead of only "Validation failed".
+  if (error?.message === 'Validation failed' && Array.isArray(details) && details.length) {
+    return details.map((detail) => detail.message).filter(Boolean).join(' ');
+  }
+
+  return error?.message ?? e.message ?? 'Something went wrong';
 }
 
 // For endpoints that return the full paginated envelope.

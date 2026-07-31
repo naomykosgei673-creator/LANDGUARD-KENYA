@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Shield, Search, QrCode, Camera, ShieldCheck, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Shield, Search, QrCode, Camera, ShieldCheck, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function VerifyToolPage() {
   const router = useRouter();
@@ -30,14 +30,19 @@ export default function VerifyToolPage() {
           <Link href="/" className="flex items-center gap-2 font-semibold text-ink-900">
             <Shield className="h-5 w-5 text-brand-600" /> LandGuard Kenya
           </Link>
-          <span className="text-xs font-semibold text-brand-700 bg-brand-50 px-2.5 py-1 rounded-full border border-brand-200">
-            Public Verification Portal
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="hidden text-xs font-semibold text-brand-700 bg-brand-50 px-2.5 py-1 rounded-full border border-brand-200 sm:inline">
+              Public Verification Portal
+            </span>
+            <Link href="/" className="btn-secondary px-3 py-1.5 text-xs" aria-label="Return to the home page">
+              <ArrowLeft className="h-3.5 w-3.5" /> Home
+            </Link>
+          </div>
         </div>
       </header>
 
       {/* Main Tool Content */}
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center px-4 py-12">
+      <main className="animate-in mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center px-4 py-12">
         <div className="w-full text-center space-y-3 mb-8">
           <div className="inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold text-brand-800">
             <ShieldCheck className="h-4 w-4" /> Cryptographic Ownership Verification

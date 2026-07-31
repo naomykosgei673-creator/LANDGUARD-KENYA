@@ -33,12 +33,15 @@ async function issueTokens(user: any) {
 
 // ─── Register ────────────────────────────────────────────────────────────────
 const registerSchema = z.object({
-  email: z.string().email(),
-  phone: z.string().min(10).max(15),
+  email: z.string().email().refine(
+    (val) => val.toLowerCase().endsWith('@landguard.co.ke'),
+    { message: 'Only @landguard.co.ke email addresses are permitted' },
+  ),
+  phone: z.string().min(10, 'Phone must be at least 10 digits').max(15),
   password: z.string().min(8, 'Password must be at least 8 characters')
     .regex(/[A-Z]/, 'Needs an uppercase letter').regex(/[0-9]/, 'Needs a number'),
-  firstName: z.string().min(2),
-  lastName: z.string().min(2),
+  firstName: z.string().min(2, 'First name must be at least 2 characters'),
+  lastName: z.string().min(2, 'Last name must be at least 2 characters'),
   nationalId: z.string().min(6).optional(),
   // Buyers/Sellers can self-register. Privileged roles are provisioned by an admin.
   role: z.enum([Roles.BUYER, Roles.SELLER]).default(Roles.BUYER),
@@ -46,10 +49,18 @@ const registerSchema = z.object({
 
 router.post('/register', validate({ body: registerSchema }), asyncHandler(async (req, res) => {
   const body = req.body as z.infer<typeof registerSchema>;
+  const email = body.email.toLowerCase();
+
+  // Check for existing email or phone to give a clear error
+  const existingEmail = await prisma.user.findUnique({ where: { email } });
+  if (existingEmail) throw BadRequest('An account with this email already exists');
+  const existingPhone = await prisma.user.findFirst({ where: { phone: body.phone } });
+  if (existingPhone) throw BadRequest('An account with this phone number already exists');
+
   const passwordHash = await hashPassword(body.password);
   const user = await prisma.user.create({
     data: {
-      email: body.email.toLowerCase(), phone: body.phone, passwordHash,
+      email, phone: body.phone, passwordHash,
       firstName: body.firstName, lastName: body.lastName, nationalId: body.nationalId,
       role: body.role, status: UserStatus.ACTIVE,
     },
