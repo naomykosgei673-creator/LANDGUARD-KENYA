@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeftRight } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { useAuth } from '@/lib/auth';
 import { Badge, PageLoader, EmptyState } from '@/components/ui';
 import { formatKES, formatDate, prettyStatus } from '@/lib/utils';
@@ -14,7 +15,8 @@ export default function Transactions() {
   const [items, setItems] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { apiGet<Transaction[]>('/transactions').then(setItems).finally(() => setLoading(false)); }, []);
+  const load = useCallback(async () => { setItems(await apiGet<Transaction[]>('/transactions')); setLoading(false); }, []);
+  useAutoRefresh(load);
   if (loading) return <PageLoader />;
 
   return (

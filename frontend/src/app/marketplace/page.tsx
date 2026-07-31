@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Shield, Search, SlidersHorizontal } from 'lucide-react';
 import { apiGetRaw } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { useAuth } from '@/lib/auth';
 import { ParcelCard } from '@/components/ParcelCard';
 import { PageLoader, EmptyState } from '@/components/ui';
@@ -20,7 +21,6 @@ export default function Marketplace() {
   const [filters, setFilters] = useState({ q: '', county: '', landUse: '', maxPrice: '' });
 
   const load = useCallback(async () => {
-    setLoading(true);
     const params: any = { pageSize: 24 };
     Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
     const res = await apiGetRaw<Paginated<Parcel>>('/parcels', params);
@@ -29,7 +29,8 @@ export default function Marketplace() {
     setLoading(false);
   }, [filters]);
 
-  useEffect(() => { load(); }, [load]);
+  // Auto-refresh; poll a little less aggressively than the dashboards.
+  useAutoRefresh(load, 15_000);
 
   return (
     <div className="min-h-screen bg-ink-50">

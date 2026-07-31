@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Shield, MapPin, Ruler, FileText, ShieldCheck, CheckCircle2, XCircle, Clock, ArrowLeft, QrCode, AlertTriangle, ExternalLink } from 'lucide-react';
 import { apiGet, apiPost, apiError } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { useAuth } from '@/lib/auth';
 import { Badge, PageLoader } from '@/components/ui';
 import { formatKES, formatDate, prettyStatus, riskBand } from '@/lib/utils';
@@ -20,9 +21,14 @@ export default function ParcelDetail() {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    apiGet<Parcel>(`/parcels/${id}`).then((p) => { setParcel(p); setOffer(String(p.price)); }).finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    const p = await apiGet<Parcel>(`/parcels/${id}`);
+    setParcel(p);
+    // Seed the offer field from the price only once; don't clobber what the buyer types on refresh.
+    setOffer((prev) => (prev === '' ? String(p.price) : prev));
+    setLoading(false);
   }, [id]);
+  useAutoRefresh(load);
 
   async function makeOffer() {
     setBusy(true); setMsg('');

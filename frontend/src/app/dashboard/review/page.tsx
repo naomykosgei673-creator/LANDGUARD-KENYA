@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, XCircle, ShieldAlert, FileText, Loader2, ScanSearch, ExternalLink } from 'lucide-react';
-import { apiGet, apiPost, apiError, api } from '@/lib/api';
+import { apiGet, apiPost, apiError } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { useAuth } from '@/lib/auth';
 import { Badge, PageLoader, EmptyState } from '@/components/ui';
 import { formatKES, prettyStatus } from '@/lib/utils';
@@ -20,11 +21,10 @@ export default function ReviewQueue() {
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
-    setLoading(true);
     try { setRecords(await apiGet<any[]>('/verification/queue')); } catch { setRecords([]); }
     setLoading(false);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useAutoRefresh(load);
 
   async function decide(parcelId: string, stage: string, decision: 'APPROVE' | 'REJECT') {
     setBusy(parcelId + decision);

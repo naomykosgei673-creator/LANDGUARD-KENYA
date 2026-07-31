@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Landmark } from 'lucide-react';
 import { apiGetRaw } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { PageLoader, EmptyState, Badge } from '@/components/ui';
 import { formatKES, formatDate } from '@/lib/utils';
 import type { Transaction } from '@/lib/types';
@@ -12,9 +13,11 @@ export default function Approvals() {
   const [items, setItems] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    apiGetRaw<{ data: Transaction[] }>('/transactions', { pending: true }).then((r) => setItems(r.data)).finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    const r = await apiGetRaw<{ data: Transaction[] }>('/transactions', { pending: true });
+    setItems(r.data); setLoading(false);
   }, []);
+  useAutoRefresh(load);
   if (loading) return <PageLoader />;
 
   return (

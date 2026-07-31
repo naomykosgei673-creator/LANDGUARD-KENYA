@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Bell, CheckCheck, ShieldAlert, CheckCircle2, Info, AlertTriangle } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { PageLoader, EmptyState } from '@/components/ui';
 import { timeAgo } from '@/lib/utils';
 import type { Notification } from '@/lib/types';
@@ -18,10 +19,19 @@ export default function Notifications() {
     const d = await apiGet<{ items: Notification[] }>('/notifications');
     setItems(d.items); setLoading(false);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useAutoRefresh(load);
 
-  async function markAll() { await apiPost('/notifications/read-all', {}); load(); }
-  async function open(n: Notification) { if (!n.read) await apiPost(`/notifications/${n.id}/read`, {}); load(); }
+  // Optimistic: flip the UI immediately, reconcile with the server in the background.
+  function markAll() {
+    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+    apiPost('/notifications/read-all', {}).catch(() => {});
+  }
+  function open(n: Notification) {
+    if (!n.read) {
+      setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+      apiPost(`/notifications/${n.id}/read`, {}).catch(() => {});
+    }
+  }
 
   if (loading) return <PageLoader />;
 

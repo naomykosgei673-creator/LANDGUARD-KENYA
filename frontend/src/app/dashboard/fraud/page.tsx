@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { ShieldAlert, ShieldCheck, AlertOctagon, MapPinned, Check } from 'lucide-react';
 import { apiGet, apiGetRaw, apiPost } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { StatCard, PageLoader, EmptyState, Badge } from '@/components/ui';
 import { prettyStatus, timeAgo } from '@/lib/utils';
 import type { FraudFlag, Paginated } from '@/lib/types';
@@ -20,11 +21,12 @@ export default function FraudConsole() {
     ]);
     setStats(s); setFlags(f.data); setLoading(false);
   }, [filter]);
-  useEffect(() => { load(); }, [load]);
+  useAutoRefresh(load);
 
-  async function resolve(id: string) {
-    await apiPost(`/fraud/${id}/resolve`, {});
-    load();
+  function resolve(id: string) {
+    // Optimistic: mark resolved instantly, then reconcile stats/list from the server.
+    setFlags((prev) => prev.map((f) => (f.id === id ? { ...f, resolved: true } : f)));
+    apiPost(`/fraud/${id}/resolve`, {}).then(() => load()).catch(() => load());
   }
 
   if (loading || !stats) return <PageLoader />;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { apiGet } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { cn, roleLabels, accentFor } from '@/lib/utils';
 
 interface NavItem { href: string; label: string; icon: any; roles: string[]; }
@@ -43,9 +44,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     if (user) document.title = `${roleLabels[user.role]} · LandGuard`;
   }, [user]);
 
-  useEffect(() => {
-    if (user) apiGet<{ unread: number }>('/notifications').then((d) => setUnread(d.unread)).catch(() => {});
+  // Keep the notification badge live — refetches on an interval, on tab focus,
+  // and whenever the route changes (pathname is a dependency of loadUnread).
+  const loadUnread = useCallback(async () => {
+    if (!user) return;
+    try { const d = await apiGet<{ unread: number }>('/notifications'); setUnread(d.unread); } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, pathname]);
+  useAutoRefresh(loadUnread, 10_000, !!user);
 
   if (loading || !user) {
     return (

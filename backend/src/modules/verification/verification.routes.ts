@@ -5,8 +5,8 @@ import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { validate } from '../../middleware/validate.js';
 import { asyncHandler, ok } from '../../utils/http.js';
-import { BadRequest, NotFound } from '../../utils/errors.js';
-import { ParcelStatus, VerificationStage, VerificationStatus, Roles, hasPermission } from '../../constants/index.js';
+import { BadRequest, Forbidden, NotFound } from '../../utils/errors.js';
+import { ParcelStatus, VerificationStage, VerificationStatus, Roles } from '../../constants/index.js';
 import { audit } from '../../services/audit.service.js';
 import { notify, notifyRole } from '../../services/notification.service.js';
 import { createParcelQr } from '../../services/qr.service.js';
@@ -29,15 +29,36 @@ const PIPELINE = [
   { stage: VerificationStage.SURVEY_APPROVAL, from: ParcelStatus.PENDING_SURVEY, nextStatus: ParcelStatus.VERIFIED, nextStage: null, notifyRole: null },
 ] as const;
 
+// Which single role owns each verification stage. ADMIN can act on any stage
+// (holds the '*' permission) as a platform override; every other reviewer is
+// locked to their own stage. Buyers/sellers own no stage at all.
+const STAGE_ROLE: Record<string, string> = {
+  [VerificationStage.ADMIN_REVIEW]: Roles.ADMIN,
+  [VerificationStage.GOVERNMENT_VERIFICATION]: Roles.GOVERNMENT_OFFICER,
+  [VerificationStage.SURVEY_APPROVAL]: Roles.SURVEYOR,
+};
+const stageByRole: Record<string, string> = {
+  [Roles.ADMIN]: VerificationStage.ADMIN_REVIEW,
+  [Roles.GOVERNMENT_OFFICER]: VerificationStage.GOVERNMENT_VERIFICATION,
+  [Roles.SURVEYOR]: VerificationStage.SURVEY_APPROVAL,
+};
+
+// True when the caller is allowed to action the given stage.
+function canActionStage(role: string, stage: string): boolean {
+  return role === Roles.ADMIN || STAGE_ROLE[stage] === role;
+}
+
 // ─── Verification queue for the caller's stage ───────────────────────────────
 router.get('/queue', asyncHandler(async (req, res) => {
-  const stageByRole: Record<string, string> = {
-    [Roles.ADMIN]: VerificationStage.ADMIN_REVIEW,
-    [Roles.GOVERNMENT_OFFICER]: VerificationStage.GOVERNMENT_VERIFICATION,
-    [Roles.SURVEYOR]: VerificationStage.SURVEY_APPROVAL,
-  };
-  const stage = req.query.stage ? String(req.query.stage) : stageByRole[req.user!.role];
-  if (!stage) throw BadRequest('No verification queue for your role');
+  // Only the three reviewer roles have a queue; everyone else is forbidden.
+  const ownStage = stageByRole[req.user!.role];
+  if (!ownStage) throw Forbidden('No verification queue for your role');
+  // Non-admin reviewers may only view their own stage; admins may inspect any.
+  const requested = req.query.stage ? String(req.query.stage) : ownStage;
+  if (req.user!.role !== Roles.ADMIN && requested !== ownStage) {
+    throw Forbidden('You can only view your own verification queue');
+  }
+  const stage = requested;
 
   const records = await prisma.verificationRecord.findMany({
     where: { stage, status: VerificationStatus.PENDING },
@@ -63,14 +84,12 @@ router.post('/:parcelId/:stage/decision', validate({ body: decisionSchema }), as
   const step = PIPELINE.find((s) => s.stage === stage);
   if (!step) throw BadRequest('Unknown verification stage');
 
-  // Role/permission gate per stage.
-  const perms: Record<string, string> = {
-    [VerificationStage.ADMIN_REVIEW]: 'parcel:submit', // admins hold '*'
-    [VerificationStage.GOVERNMENT_VERIFICATION]: 'verification:government',
-    [VerificationStage.SURVEY_APPROVAL]: 'verification:survey',
-  };
-  const need = perms[stage];
-  if (!hasPermission(req.user!.role, need)) throw BadRequest('You cannot action this verification stage');
+  // Role gate per stage. ADMIN_REVIEW must be admin-only — note that SELLER also
+  // holds `parcel:submit`, so gating on that permission would let a seller approve
+  // the admin review of any parcel. Gate on the stage's owning role instead.
+  if (!canActionStage(req.user!.role, stage)) {
+    throw Forbidden('You cannot action this verification stage');
+  }
 
   const parcel = await prisma.landParcel.findUnique({ where: { id: parcelId } });
   if (!parcel) throw NotFound('Parcel not found');
@@ -128,6 +147,15 @@ router.post('/:parcelId/:stage/decision', validate({ body: decisionSchema }), as
 
 // ─── Full verification history for a parcel ──────────────────────────────────
 router.get('/:parcelId/history', asyncHandler(async (req, res) => {
+  // Reviewers see any parcel's history; regular users only their own parcels.
+  const isReviewer = Boolean(stageByRole[req.user!.role]);
+  if (!isReviewer) {
+    const parcel = await prisma.landParcel.findUnique({ where: { id: req.params.parcelId }, select: { sellerId: true, currentOwnerId: true } });
+    if (!parcel) throw NotFound('Parcel not found');
+    if (parcel.sellerId !== req.user!.sub && parcel.currentOwnerId !== req.user!.sub) {
+      throw Forbidden('You can only view verification history for your own parcels');
+    }
+  }
   const records = await prisma.verificationRecord.findMany({
     where: { parcelId: req.params.parcelId },
     include: { reviewer: { select: { firstName: true, lastName: true, role: true } } },

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { ScrollText } from 'lucide-react';
 import { apiGetRaw } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { PageLoader, EmptyState, Badge } from '@/components/ui';
 import { prettyStatus, timeAgo } from '@/lib/utils';
 import type { Paginated } from '@/lib/types';
@@ -21,7 +22,7 @@ export default function Audit() {
     const r = await apiGetRaw<Paginated<Log>>('/audit', entity ? { entity, pageSize: 100 } : { pageSize: 100 });
     setLogs(r.data); setLoading(false);
   }, [entity]);
-  useEffect(() => { load(); }, [load]);
+  useAutoRefresh(load);
 
   if (loading) return <PageLoader />;
 

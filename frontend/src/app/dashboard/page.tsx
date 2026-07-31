@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Users, Landmark, ShieldAlert, ArrowLeftRight, Store, ClipboardCheck, CheckCircle2, Wallet, MapPin, ScrollText } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { apiGet } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { StatCard, PageLoader } from '@/components/ui';
 import { formatKES, roleLabels } from '@/lib/utils';
 
@@ -13,9 +14,11 @@ export default function DashboardHome() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    apiGet<any>('/reports/dashboard').then(setStats).finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    setStats(await apiGet<any>('/reports/dashboard'));
+    setLoading(false);
   }, []);
+  useAutoRefresh(load);
 
   if (loading || !stats) return <PageLoader />;
 

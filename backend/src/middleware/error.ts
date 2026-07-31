@@ -27,6 +27,10 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   if (anyErr?.code === 'P2025') {
     return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Record not found' } });
   }
+  // Foreign-key constraint failure → 400 (e.g. referencing a user/parcel that doesn't exist)
+  if (anyErr?.code === 'P2003') {
+    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Operation references a related record that does not exist' } });
+  }
 
   logger.error('Unhandled error', { message: anyErr?.message, stack: anyErr?.stack });
   res.status(500).json({ success: false, error: { code: 'INTERNAL', message: 'An unexpected error occurred' } });

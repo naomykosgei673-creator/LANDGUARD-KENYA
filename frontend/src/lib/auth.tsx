@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { api, tokenStore, apiPost } from './api';
+import { connectSocket, disconnectSocket } from './socket';
 import type { User } from './types';
 
 interface AuthState {
@@ -36,6 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     })();
   }, []);
+
+  // Open the realtime channel while signed in; close it on sign-out. This powers
+  // live notifications and the app-wide instant auto-refresh.
+  useEffect(() => {
+    if (user) connectSocket();
+    else disconnectSocket();
+  }, [user]);
 
   async function login(email: string, password: string, twoFactorToken?: string) {
     const res = await apiPost<any>('/auth/login', { email, password, twoFactorToken });

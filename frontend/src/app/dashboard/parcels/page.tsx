@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, Upload, Send, FileText, AlertTriangle, Loader2 } from 'lucide-react';
 import { apiGet, apiPost, apiError } from '@/lib/api';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { Badge, PageLoader, EmptyState } from '@/components/ui';
 import { formatKES, prettyStatus } from '@/lib/utils';
 import type { Parcel } from '@/lib/types';
@@ -20,7 +21,7 @@ export default function MyParcels() {
     setParcels(await apiGet<Parcel[]>('/parcels/mine'));
     setLoading(false);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useAutoRefresh(load);
 
   async function submit(id: string) {
     setMsg(null);
