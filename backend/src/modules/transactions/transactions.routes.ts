@@ -33,7 +33,18 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
-  const tx = await prisma.transaction.findUnique({ where: { id: req.params.id }, include: { ...txInclude, certificate: true } });
+  const tx = await prisma.transaction.findUnique({
+    where: { id: req.params.id },
+    include: {
+      ...txInclude,
+      certificate: {
+        include: {
+          qrCode: true,
+          owner: { select: { firstName: true, lastName: true } },
+        },
+      },
+    },
+  });
   if (!tx) throw NotFound('Transaction not found');
   const uid = req.user!.sub;
   const privileged = [Roles.ADMIN, Roles.GOVERNMENT_OFFICER].includes(req.user!.role as any);

@@ -121,23 +121,21 @@ router.post('/:parcelId/:stage/decision', validate({ body: decisionSchema }), as
   await audit({ action: `APPROVE_${stage}`, entity: 'LandParcel', entityId: parcelId, req });
 
   if (isFinal) {
-    // Fully verified → auto-list and mint a verification QR the buyer can scan.
-    // As per policy, we also purge sensitive documents once verification is complete for user safety.
-    const docs = await prisma.document.findMany({ where: { parcelId } });
-    for (const doc of docs) {
-      try {
-        await fs.unlink(path.resolve(UPLOADS_DIR, doc.fileUrl));
-      } catch { /* ignore */ }
-    }
-
+    // Fully verified → auto-list, mark all attached documents VERIFIED, and mint verification QR code.
     await prisma.$transaction([
       prisma.landParcel.update({ where: { id: parcelId }, data: { status: ParcelStatus.LISTED } }),
-      prisma.document.deleteMany({ where: { parcelId } }),
+      prisma.document.updateMany({ where: { parcelId }, data: { status: 'VERIFIED' } }),
     ]);
 
     await createParcelQr(parcelId, 'PARCEL');
-    await audit({ action: 'PURGE_DOCUMENTS_ON_VERIFIED', entity: 'LandParcel', entityId: parcelId, req });
-    await notify({ userId: parcel.sellerId, title: '✅ Parcel verified & listed', body: `Your parcel ${parcel.parcelNumber} passed all checks and is now live. Documents were purged for your safety.`, type: 'SUCCESS', link: `/dashboard/parcels/${parcelId}` });
+    await audit({ action: 'PARCEL_VERIFIED_AND_LISTED', entity: 'LandParcel', entityId: parcelId, req });
+    await notify({
+      userId: parcel.sellerId,
+      title: '✅ Parcel verified & listed',
+      body: `Your parcel ${parcel.parcelNumber} passed all verification stages and is now live on the marketplace.`,
+      type: 'SUCCESS',
+      link: `/dashboard/parcels/${parcelId}`,
+    });
   } else if (step.notifyRole) {
     await notifyRole(step.notifyRole, { title: 'Parcel awaiting your review', body: `Parcel ${parcel.parcelNumber} advanced to ${step.nextStage}.`, type: 'INFO', link: '/dashboard/review' });
   }

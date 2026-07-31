@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Shield, ShieldCheck, ShieldX, MapPin, Ruler, User, Hash, Loader2 } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldX, MapPin, Ruler, User, Hash, Loader2, Search } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 
 interface VerifyResult {
@@ -17,12 +17,33 @@ interface VerifyResult {
 
 export default function VerifyPage() {
   const { code } = useParams<{ code: string }>();
+  const router = useRouter();
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [entry, setEntry] = useState('');
 
   useEffect(() => {
-    apiGet<VerifyResult>(`/qr/verify/${code}`).then(setResult).catch(() => setResult({ valid: false, reason: 'not found' })).finally(() => setLoading(false));
+    setLoading(true);
+    apiGet<VerifyResult>(`/qr/verify/${code}`)
+      .then(setResult)
+      .catch((err: any) => {
+        // Distinguish "record isn't in the registry" from "couldn't reach the server".
+        const unreachable = !err?.response;
+        setResult({
+          valid: false,
+          reason: unreachable
+            ? 'Could not reach the verification server. Please check your connection and try again.'
+            : 'This code is not in the LandGuard registry.',
+        });
+      })
+      .finally(() => setLoading(false));
   }, [code]);
+
+  function verifyEntered(e: React.FormEvent) {
+    e.preventDefault();
+    const c = entry.trim();
+    if (c) router.push(`/verify/${encodeURIComponent(c)}`);
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-ink-50">
@@ -65,6 +86,22 @@ export default function VerifyPage() {
             <p className="mt-4 text-center text-xs text-ink-400">
               This verification confirms the record exists in the LandGuard registry and its digital signature is intact.
             </p>
+
+            {/* Verify another code — matches the "or enter its code" promise on the landing page. */}
+            <form onSubmit={verifyEntered} className="card mt-6 flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
+              <label className="sr-only" htmlFor="verify-code">Certificate or QR code</label>
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-ink-400" />
+                <input
+                  id="verify-code"
+                  className="input pl-9"
+                  placeholder="Enter a certificate / QR code to verify…"
+                  value={entry}
+                  onChange={(e) => setEntry(e.target.value)}
+                />
+              </div>
+              <button type="submit" className="btn-primary" disabled={!entry.trim()}>Verify code</button>
+            </form>
           </div>
         )}
       </div>

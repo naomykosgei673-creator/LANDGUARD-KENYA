@@ -10,6 +10,7 @@
     "prod": "concurrently -k -n BACKEND,FRONTEND,ML -c blue,green,magenta \"npm --prefix backend run start\" \"npm --prefix frontend run start\" \"python ml-service/app.py\"",
     "fast": "npm run build && npm run prod",
     "start": "npm run dev",
+    "clean": "npm --prefix frontend run clean",
     "reseed": "npm --prefix backend run db:seed"
   },
   "devDependencies": {

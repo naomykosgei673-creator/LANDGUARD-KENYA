@@ -88,7 +88,15 @@ export interface Transaction {
   buyer?: { id: string; firstName: string; lastName: string; email: string };
   seller?: { id: string; firstName: string; lastName: string; email: string };
   payments?: any[];
-  certificate?: { certificateNumber: string; issuedAt: string };
+  certificate?: {
+    id?: string;
+    certificateNumber: string;
+    signature?: string;
+    pdfUrl?: string;
+    issuedAt: string;
+    qrCode?: { code: string; type: string; scans?: number };
+    owner?: { firstName: string; lastName: string };
+  };
 }
 
 export interface Notification {

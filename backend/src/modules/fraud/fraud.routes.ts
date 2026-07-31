@@ -39,6 +39,27 @@ router.get('/stats', asyncHandler(async (_req, res) => {
 
 router.post('/:id/resolve', asyncHandler(async (req, res) => {
   const flag = await prisma.fraudFlag.update({ where: { id: req.params.id }, data: { resolved: true } });
+
+  // If this flag belonged to a parcel, re-assess remaining unresolved flags & risk score
+  if (flag.parcelId) {
+    const activeFlags = await prisma.fraudFlag.findMany({
+      where: { parcelId: flag.parcelId, resolved: false },
+    });
+    const newRiskScore = Math.min(100, activeFlags.reduce((sum, f) => sum + f.score, 0));
+    const parcel = await prisma.landParcel.findUnique({ where: { id: flag.parcelId } });
+
+    if (parcel) {
+      const shouldUnflag = parcel.status === 'FLAGGED' && newRiskScore < 60;
+      await prisma.landParcel.update({
+        where: { id: flag.parcelId },
+        data: {
+          riskScore: newRiskScore,
+          ...(shouldUnflag ? { status: 'LISTED' } : {}),
+        },
+      });
+    }
+  }
+
   await audit({ action: 'RESOLVE_FRAUD_FLAG', entity: 'FraudFlag', entityId: flag.id, req });
   ok(res, flag);
 }));

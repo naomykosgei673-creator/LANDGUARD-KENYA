@@ -106,7 +106,7 @@ export default function Landing() {
             Scan the QR code on a LandGuard certificate — or enter its code — to confirm the parcel, current owner and
             authenticity, with no account required.
           </p>
-          <Link href="/verify/demo-cert-qr-0001" className="btn-primary px-6 py-3">Try a live verification</Link>
+          <Link href="/verify" className="btn-primary px-6 py-3">Try a live verification</Link>
         </div>
       </section>
 

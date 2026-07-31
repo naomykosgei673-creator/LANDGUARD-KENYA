@@ -12,6 +12,8 @@ import { publicUser } from '../auth/auth.routes.js';
 import { audit } from '../../services/audit.service.js';
 import { notify } from '../../services/notification.service.js';
 
+import { runAndPersistFraudCheck } from '../../services/fraud.service.js';
+
 const router = Router();
 router.use(authenticate);
 
@@ -80,6 +82,13 @@ router.post('/:id/blacklist', requireRole(Roles.ADMIN), validate({ body: blackli
     where: { id: req.params.id },
     data: { isBlacklisted: blacklisted, blacklistReason: blacklisted ? reason ?? 'Flagged by administrator' : null },
   });
+
+  // Automatically re-scan all parcels by this user so blacklisted listings are immediately flagged
+  const sellerParcels = await prisma.landParcel.findMany({ where: { sellerId: user.id } });
+  for (const parcel of sellerParcels) {
+    await runAndPersistFraudCheck(parcel.id);
+  }
+
   await audit({ action: blacklisted ? 'BLACKLIST_USER' : 'UNBLACKLIST_USER', entity: 'User', entityId: user.id, req, metadata: { reason } });
   await notify({
     userId: user.id,
