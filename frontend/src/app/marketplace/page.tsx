@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { Shield, Search, SlidersHorizontal } from 'lucide-react';
 import { apiGetRaw } from '@/lib/api';
@@ -19,14 +19,21 @@ export default function Marketplace() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ q: '', county: '', landUse: '', maxPrice: '' });
+  const latestRequest = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     const params: any = { pageSize: 24 };
     Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
-    const res = await apiGetRaw<Paginated<Parcel>>('/parcels', params);
-    setParcels(res.data);
-    setTotal(res.pagination.total);
-    setLoading(false);
+    try {
+      const res = await apiGetRaw<Paginated<Parcel>>('/parcels', params);
+      // Never let a slower, older refresh overwrite the latest view.
+      if (requestId !== latestRequest.current) return;
+      setParcels(res.data);
+      setTotal(res.pagination.total);
+    } finally {
+      if (requestId === latestRequest.current) setLoading(false);
+    }
   }, [filters]);
 
   // Auto-refresh; poll a little less aggressively than the dashboards.

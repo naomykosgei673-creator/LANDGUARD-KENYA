@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { Plus, Upload, Send, FileText, AlertTriangle, Loader2 } from 'lucide-react';
 import { apiGet, apiPost, apiError } from '@/lib/api';
@@ -16,10 +16,17 @@ export default function MyParcels() {
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ id: string; text: string; error?: boolean } | null>(null);
+  const latestRequest = useRef(0);
 
   const load = useCallback(async () => {
-    setParcels(await apiGet<Parcel[]>('/parcels/mine'));
-    setLoading(false);
+    const requestId = ++latestRequest.current;
+    try {
+      const items = await apiGet<Parcel[]>('/parcels/mine');
+      // Ignore older polling responses after a newer mutation/refresh succeeds.
+      if (requestId === latestRequest.current) setParcels(items);
+    } finally {
+      if (requestId === latestRequest.current) setLoading(false);
+    }
   }, []);
   useAutoRefresh(load);
 

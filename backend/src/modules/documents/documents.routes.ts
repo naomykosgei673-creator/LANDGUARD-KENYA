@@ -88,6 +88,12 @@ router.get('/:id/content', requirePermission('document:read'), asyncHandler(asyn
 }));
 
 router.get('/parcel/:parcelId', asyncHandler(async (req, res) => {
+  const parcel = await prisma.landParcel.findUnique({ where: { id: req.params.parcelId }, select: { sellerId: true, currentOwnerId: true } });
+  if (!parcel) throw NotFound('Parcel not found');
+  const privileged = ['ADMIN', 'GOVERNMENT_OFFICER', 'SURVEYOR'].includes(req.user!.role);
+  if (!privileged && parcel.sellerId !== req.user!.sub && parcel.currentOwnerId !== req.user!.sub) {
+    throw Forbidden('You can only view documents for your own parcel');
+  }
   const docs = await prisma.document.findMany({ where: { parcelId: req.params.parcelId }, orderBy: { createdAt: 'asc' } });
   ok(res, docs);
 }));

@@ -47,7 +47,9 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
     ];
   }
 
-  const [items, total] = await Promise.all([
+  // Read the cards and total from one database snapshot so they cannot disagree
+  // while a parcel transitions between lifecycle states.
+  const [items, total] = await prisma.$transaction([
     prisma.landParcel.findMany({ where, skip, take, orderBy: { createdAt: 'desc' }, include: parcelInclude }),
     prisma.landParcel.count({ where }),
   ]);
@@ -78,10 +80,17 @@ router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
   });
   if (!parcel) throw NotFound('Parcel not found');
 
-  // Hide fraud internals from the general public.
+  // Drafts and in-review records belong only to their seller/owner and officials.
+  // A guessed parcel ID must never expose an unverified listing.
   const role = req.user?.role;
   const privileged = role && [Roles.ADMIN, Roles.GOVERNMENT_OFFICER, Roles.SURVEYOR].includes(role as any);
   const isOwnerOrSeller = req.user && (req.user.sub === parcel.sellerId || req.user.sub === parcel.currentOwnerId);
+  const publicStatus = [ParcelStatus.LISTED, ParcelStatus.VERIFIED, ParcelStatus.UNDER_OFFER];
+  if (!privileged && !isOwnerOrSeller && !publicStatus.includes(parcel.status as any)) {
+    throw NotFound('Parcel not found');
+  }
+
+  // Hide fraud internals from the general public.
   if (!privileged && !isOwnerOrSeller) {
     (parcel as any).fraudFlags = undefined;
   }

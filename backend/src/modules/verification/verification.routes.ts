@@ -112,8 +112,12 @@ router.post('/:parcelId/:stage/decision', validate({ body: decisionSchema }), as
   const isFinal = step.nextStage === null;
   await prisma.$transaction(async (tx) => {
     await tx.verificationRecord.update({ where: { id: record.id }, data: { status: VerificationStatus.APPROVED, reviewerId: req.user!.sub, notes, decidedAt: new Date() } });
-    await tx.landParcel.update({ where: { id: parcelId }, data: { status: step.nextStatus } });
-    if (!isFinal) {
+    if (isFinal) {
+      // Commit approval and marketplace publication as one state change.
+      await tx.landParcel.update({ where: { id: parcelId }, data: { status: ParcelStatus.LISTED } });
+      await tx.document.updateMany({ where: { parcelId }, data: { status: 'VERIFIED' } });
+    } else {
+      await tx.landParcel.update({ where: { id: parcelId }, data: { status: step.nextStatus } });
       await tx.verificationRecord.create({ data: { parcelId, stage: step.nextStage!, status: VerificationStatus.PENDING } });
     }
   });
@@ -122,11 +126,6 @@ router.post('/:parcelId/:stage/decision', validate({ body: decisionSchema }), as
 
   if (isFinal) {
     // Fully verified → auto-list, mark all attached documents VERIFIED, and mint verification QR code.
-    await prisma.$transaction([
-      prisma.landParcel.update({ where: { id: parcelId }, data: { status: ParcelStatus.LISTED } }),
-      prisma.document.updateMany({ where: { parcelId }, data: { status: 'VERIFIED' } }),
-    ]);
-
     await createParcelQr(parcelId, 'PARCEL');
     await audit({ action: 'PARCEL_VERIFIED_AND_LISTED', entity: 'LandParcel', entityId: parcelId, req });
     await notify({

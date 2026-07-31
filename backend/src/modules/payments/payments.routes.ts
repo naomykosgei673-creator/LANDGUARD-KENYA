@@ -6,10 +6,11 @@ import { requirePermission } from '../../middleware/rbac.js';
 import { validate } from '../../middleware/validate.js';
 import { asyncHandler, ok } from '../../utils/http.js';
 import { BadRequest, Forbidden, NotFound } from '../../utils/errors.js';
-import { PaymentMethod, PaymentStatus, TransactionStatus } from '../../constants/index.js';
+import { PaymentMethod, PaymentStatus, Roles, TransactionStatus } from '../../constants/index.js';
 import { getGateway } from '../../services/payment/gateway.js';
 import { settleTransaction } from '../../services/settlement.service.js';
 import { audit } from '../../services/audit.service.js';
+import { env } from '../../config/env.js';
 
 const router = Router();
 
@@ -53,6 +54,10 @@ router.post('/', authenticate, requirePermission('payment:create'), validate({ b
 router.get('/:reference', authenticate, asyncHandler(async (req, res) => {
   const payment = await prisma.payment.findUnique({ where: { reference: req.params.reference }, include: { transaction: true } });
   if (!payment) throw NotFound('Payment not found');
+  const privileged = [Roles.ADMIN, Roles.GOVERNMENT_OFFICER].includes(req.user!.role as any);
+  if (!privileged && payment.transaction.buyerId !== req.user!.sub && payment.transaction.sellerId !== req.user!.sub) {
+    throw Forbidden('You cannot view this payment');
+  }
   ok(res, payment);
 }));
 
@@ -78,6 +83,7 @@ router.post('/mpesa/callback', asyncHandler(async (req, res) => {
 
 // ─── Manual settle for sandbox demo (buyer confirms a PENDING M-Pesa/bank pay) ─
 router.post('/:reference/confirm-sandbox', authenticate, asyncHandler(async (req, res) => {
+  if (!env.payments.sandbox) throw Forbidden('Sandbox payment confirmation is disabled');
   const payment = await prisma.payment.findUnique({ where: { reference: req.params.reference }, include: { transaction: true } });
   if (!payment) throw NotFound('Payment not found');
   if (payment.transaction.buyerId !== req.user!.sub) throw Forbidden();

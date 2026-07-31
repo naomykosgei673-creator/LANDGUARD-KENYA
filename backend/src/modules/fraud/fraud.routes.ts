@@ -4,6 +4,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { asyncHandler, ok, paginated, parsePagination } from '../../utils/http.js';
 import { audit } from '../../services/audit.service.js';
+import { ParcelStatus, VerificationStage, VerificationStatus } from '../../constants/index.js';
 
 const router = Router();
 router.use(authenticate, requirePermission('fraud:read'));
@@ -50,11 +51,32 @@ router.post('/:id/resolve', asyncHandler(async (req, res) => {
 
     if (parcel) {
       const shouldUnflag = parcel.status === 'FLAGGED' && newRiskScore < 60;
+      let restoredStatus: string | undefined;
+      if (shouldUnflag) {
+        // FLAGGED replaces the visible lifecycle state, so reconstruct the
+        // correct state from its verification history. Never publish a draft
+        // merely because an administrator resolved a fraud flag.
+        const records = await prisma.verificationRecord.findMany({ where: { parcelId: flag.parcelId } });
+        const pending = records.find((record) => record.status === VerificationStatus.PENDING);
+        const rejected = records.some((record) => record.status === VerificationStatus.REJECTED);
+        const stageStatus: Record<string, string> = {
+          [VerificationStage.ADMIN_REVIEW]: ParcelStatus.PENDING_ADMIN,
+          [VerificationStage.GOVERNMENT_VERIFICATION]: ParcelStatus.PENDING_GOVERNMENT,
+          [VerificationStage.SURVEY_APPROVAL]: ParcelStatus.PENDING_SURVEY,
+        };
+        restoredStatus = pending
+          ? stageStatus[pending.stage]
+          : rejected
+            ? ParcelStatus.REJECTED
+            : records.length >= 3
+              ? ParcelStatus.LISTED
+              : ParcelStatus.DRAFT;
+      }
       await prisma.landParcel.update({
         where: { id: flag.parcelId },
         data: {
           riskScore: newRiskScore,
-          ...(shouldUnflag ? { status: 'LISTED' } : {}),
+          ...(restoredStatus ? { status: restoredStatus } : {}),
         },
       });
     }

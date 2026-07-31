@@ -61,10 +61,18 @@ router.post('/', requirePermission('transaction:create'), validate({ body: offer
   if (![ParcelStatus.LISTED, ParcelStatus.VERIFIED].includes(parcel.status as any)) throw BadRequest('This parcel is not available for offers');
   if (parcel.sellerId === req.user!.sub) throw BadRequest('You cannot make an offer on your own parcel');
 
-  const tx = await prisma.transaction.create({
-    data: { parcelId, buyerId: req.user!.sub, sellerId: parcel.sellerId, offerAmount, status: TransactionStatus.OFFER_MADE },
+  // Reserve the listing and create the offer in one transaction. The conditional
+  // update prevents two buyers from creating competing offers from a stale page.
+  const tx = await prisma.$transaction(async (dbTx) => {
+    const reserved = await dbTx.landParcel.updateMany({
+      where: { id: parcelId, status: { in: [ParcelStatus.LISTED, ParcelStatus.VERIFIED] } },
+      data: { status: ParcelStatus.UNDER_OFFER },
+    });
+    if (reserved.count !== 1) throw BadRequest('This parcel is no longer available for offers');
+    return dbTx.transaction.create({
+      data: { parcelId, buyerId: req.user!.sub, sellerId: parcel.sellerId, offerAmount, status: TransactionStatus.OFFER_MADE },
+    });
   });
-  await prisma.landParcel.update({ where: { id: parcelId }, data: { status: ParcelStatus.UNDER_OFFER } });
   await audit({ action: 'MAKE_OFFER', entity: 'Transaction', entityId: tx.id, req, metadata: { offerAmount } });
   await notify({ userId: parcel.sellerId, title: 'New offer received', body: `You received an offer of KES ${offerAmount.toLocaleString()} on ${parcel.parcelNumber}.`, type: 'TRANSACTION', link: `/dashboard/transactions/${tx.id}` });
   ok(res, tx, 201);

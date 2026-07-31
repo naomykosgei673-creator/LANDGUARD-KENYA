@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Shield, FileCheck, QrCode, Landmark, Search, ScanLine, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { FeaturedParcels } from '@/components/FeaturedParcels';
 
 const features = [
   { icon: FileCheck, title: 'Document Verification', desc: 'Every title deed, survey map and land search is fingerprinted (SHA-256) and screened before a listing goes live.' },
@@ -78,6 +79,8 @@ export default function Landing() {
           ))}
         </div>
       </section>
+
+      <FeaturedParcels />
 
       {/* Workflow */}
       <section className="bg-ink-900 py-16 text-white">

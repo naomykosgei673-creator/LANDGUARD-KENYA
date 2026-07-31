@@ -46,8 +46,11 @@ const createSchema = z.object({
 });
 router.post('/', requireRole(Roles.ADMIN), validate({ body: createSchema }), asyncHandler(async (req, res) => {
   const b = req.body as z.infer<typeof createSchema>;
+  const { password, ...userData } = b;
   const user = await prisma.user.create({
-    data: { ...b, email: b.email.toLowerCase(), passwordHash: await hashPassword(b.password), status: UserStatus.ACTIVE },
+    // Never spread the plaintext password into Prisma data: it is not a database
+    // field and would make administrator-created accounts fail at runtime.
+    data: { ...userData, email: b.email.toLowerCase(), passwordHash: await hashPassword(password), status: UserStatus.ACTIVE },
   });
   await audit({ action: 'ADMIN_CREATE_USER', entity: 'User', entityId: user.id, req, metadata: { role: b.role } });
   ok(res, publicUser(user), 201);

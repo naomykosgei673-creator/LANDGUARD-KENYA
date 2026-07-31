@@ -102,7 +102,7 @@ export const Permissions: Record<string, string[]> = {
   ],
   GOVERNMENT_OFFICER: [
     'parcel:read', 'verification:government', 'transaction:approve', 'document:verify',
-    'fraud:read', 'audit:read', 'qr:verify', 'report:read',
+    'document:read', 'fraud:read', 'audit:read', 'qr:verify', 'report:read',
   ],
   SURVEYOR: [
     'parcel:read', 'verification:survey', 'sitevisit:read', 'sitevisit:complete',
